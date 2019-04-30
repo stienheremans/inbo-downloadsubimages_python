@@ -12,14 +12,14 @@ from shapely.geometry import box, Polygon
 import pandas as pd
 import gdal
 
-# import the buffered convex hull around the parcels as created in R
+# import the shqpefile of your study site and transform it into a geojson
 driver = ogr.GetDriverByName('ESRI Shapefile')
-shp_path = r'Q:\Projects\PRJ_RemSen\Remote sensing for grasslands (Stien)\Analyses 2019\grassland_phases\data\buffers parcels\Damvallei_opgekuist_Stien_WGS84_bbox.shp'
+shp_path = "inputs\shp_grasslands\Turnhout_opgekuist_Stien_WGS84_bbox.shp"
 file = gpd.read_file(shp_path)
-file.to_file("Damvallei.json", driver="GeoJSON")
+file.to_file("Turnhout2.json", driver="GeoJSON")
 
 
-with open("Damvallei.json") as f:
+with open("Turnhout.json") as f:
     gj = geojson.load(f)
 features = gj['features'][0]
   
@@ -32,19 +32,19 @@ geometry = {
         ]
     ]
 }
-# replace coordinates in the dict json file created above by the actual coordinates from the geojson file
+# replace coordinates in the empty json file created above by the actual coordinates from the geojson file
 geometry["coordinates"] = features.geometry.coordinates
 print(geometry)
 
 
-# get images that overlap with our AOI 
+# get images that overlap with your study site
 geometry_filter = {
         "type": "GeometryFilter",
         "field_name": "geometry",
         "config":geometry
 }
 
-# get images acquired within a date range
+# get images acquired within a preset date range
 date_range_filter = {
         "type": "DateRangeFilter",
         "field_name": "acquired",
@@ -54,7 +54,7 @@ date_range_filter = {
         }
 }
 
-# only get images which have <90% cloud coverage
+# only get images which have < X% cloud coverage
 cloud_cover_filter = {
         "type": "RangeFilter",
         "field_name": "cloud_cover",
@@ -63,19 +63,19 @@ cloud_cover_filter = {
     }
 }
 
-# combine our geo, date, cloud filters
+# combine the geo, date and cloud filters
 combined_filter = {
         "type": "AndFilter",
         "config": [geometry_filter, date_range_filter, cloud_cover_filter]
 }
 
-# Give API key for Planet account
+# Give API key for ypur Planet account
 PLANET_API_KEY = 'c3428a8d40f849a0bf6e59f0c8895919'
 
 item_type = "PSScene4Band"
 asset_type = "analytic_sr"
 
-# API request object
+# make API request object
 search_request = {
         "interval": "day",
         "item_types":[item_type],
@@ -90,15 +90,14 @@ requests.post(
         json=search_request)
 print(json.dumps(search_result.json(), indent = 1))
 
-# Extract image IDs only
+# Extract image properties
 image_ids = [feature['id'] for feature in search_result.json()['features']]
-print(image_ids)
 image_dates = [feature['properties']['acquired'][0:10] for feature in search_result.json()['features']]
 image_months = [feature['properties']['acquired'][5:7] for feature in search_result.json()['features']]
 image_days = [feature['properties']['acquired'][8:10] for feature in search_result.json()['features']]
 image_clouds = [feature['properties']['cloud_cover'] for feature in search_result.json()['features']]
 
-# Determine overlap between buffered convex hull around the study area and each of the planet scenes
+# Determine overlap between study site and each of the planet scenes
 poly_hull = Polygon(geometry["coordinates"][0])
 crs = {'init': 'epsg:4326'}
 geo_hull = gpd.GeoDataFrame(index=[0], crs=crs, geometry = [poly_hull])  

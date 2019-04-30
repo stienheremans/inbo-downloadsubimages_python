@@ -11,6 +11,14 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 
+from sentinelhub import FisRequest, BBox, Geometry, CRS, WcsRequest, CustomUrlParam, \
+    DataSource, HistogramType
+from sentinelhub.time_utils import iso_to_datetime
+
+INSTANCE_ID = '3afe5624-3087-4641-869f-14e14c9885c9'
+
+output_folder = "outputs\Sen2_data\Turnhout"
+input_shp = "inputs\shp_grasslands\Turnhout_opgekuist_Stien_WGS84_bbox.shp"
 
 def plot_image(image, factor=1):
     """
@@ -22,120 +30,102 @@ def plot_image(image, factor=1):
     else:
         plt.imshow(image)
 
-
 # Calculate the bounding box of the polygon to be used as the AOI (area of interest
-file = ogr.Open("inputs\shp_grasslands\Breemeersen_opgekuist_WGS84_bbox.shp")
+file = ogr.Open(input_shp)
 layer = file.GetLayer(0)
-feature = layer.GetFeature(0)
+feature = layer.GetFeature(0) #can be used to create for loop over all polygons in a shapefile
 geometry = feature.GetGeometryRef()
 minLong, maxLong, minLat, maxLat = geometry.GetEnvelope()
 
 bbox_coord_WGS84 = [minLong, minLat, maxLong,maxLat]
-bbox_area = BBox(bbox=bbox_coord_WGS84, crs=CRS.WGS84)
+bbox_area = BBox((minLong, minLat, maxLong,maxLat),CRS.WGS84)
 
 # Go to https://apps.sentinel-hub.com/dashboard/#/configurations
 # In Simple WMS Instance configuration, add layers with a layer name
 # These configurations can be called in the WmsRequest by 'layer= '
 # If you just want bands, put 'return[BAND_NAMES]' in the custom script of the layer
 
-wms_true_color_request = WmsRequest(layer='TRUE-COLOR-S2-L2A',
-                                    bbox=bbox_area,
-                                    time=('2016-03-01', '2016-10-31'),
-                                    width=512,
-                                    maxcc=0.3)
+#One of the tools in sentinelhub-py package is a wrapper around Sentinel Hub Feature (or Statistical) Info Service (FIS). The service is documented at Sentinel Hub webpage.
 
-wms_true_color_img = wms_true_color_request.get_data()
-
-print('There are %d Sentinel-2 images available for the growing season of 2016 with cloud coverage less than %1.0f%%.' % (len(wms_true_color_img), wms_true_color_request.maxcc * 100.0))
-
-print('These %d images were taken on the following dates:' % len(wms_true_color_img))
-for index, date in enumerate(wms_true_color_request.get_dates()):
-    print(' - image %d was taken on %s' % (index, date))
-
-wms_true_color_request = WmsRequest(layer='TRUE-COLOR-S2-L2A',
-                                    bbox=bbox_area,
-                                    time=('2017-03-01', '2017-10-31'),
-                                    width=512,
-                                    maxcc=0.3)
-
-wms_true_color_img = wms_true_color_request.get_data()
-
-print('There are %d Sentinel-2 images available for the growing season of 2017 with cloud coverage less than %1.0f%%.' % (len(wms_true_color_img), wms_true_color_request.maxcc * 100.0))
-
-print('These %d images were taken on the following dates:' % len(wms_true_color_img))
-for index, date in enumerate(wms_true_color_request.get_dates()):
-    print(' - image %d was taken on %s' % (index, date))
-    
-
-wms_true_color_request = WmsRequest(layer='TRUE-COLOR-S2-L2A',
-                                    bbox=bbox_area,
-                                    time=('2018-03-01', '2018-10-31'),
-                                    width=512,
-                                    maxcc=0.3)
-
-wms_true_color_img = wms_true_color_request.get_data()
-
-print('There are %d Sentinel-2 images available for the growing season of 2018 with cloud coverage less than %1.0f%%.' % (len(wms_true_color_img), wms_true_color_request.maxcc * 100.0))
-
-print('These %d images were taken on the following dates:' % len(wms_true_color_img))
-for index, date in enumerate(wms_true_color_request.get_dates()):
-    print(' - image %d was taken on %s' % (index, date))
-    
-    
-
-wms_bands_request = WmsRequest(layer='BANDS-S2-L2A',
+wms_scl_request_2018 = WmsRequest(layer='SCL-S2-L2A',
                                bbox=bbox_area,
-                               time='2018-05-06',
-                               width=512,
+                               time=('2018-03-01', '2018-10-31'),
+                               maxcc=0.3,
+                               width = 512,
                                image_format=MimeType.TIFF_d32f)
 
-wms_bands_img = wms_bands_request.get_data()
-    
-plot_image(wms_bands_img[-1][:, :, 11])
+wms_scl_img_2018 = wms_scl_request_2018.get_data()
 
-
-
-wms_clouds_request = WmsRequest(layer='SCL-S2-L2A',
+for index, date in enumerate(wms_scl_request_2018.get_dates()):
+    print(index)
+    print(date.date())
+    good_pix=np.copy(wms_scl_img_2018[index])
+    good_pix[(good_pix<=3)] = 0
+    good_pix[(good_pix>3) & (good_pix<=6)] = 1
+    good_pix[(good_pix>6)] = 0
+    perc_good = np.sum(good_pix)/(good_pix.shape[0]*good_pix.shape[1])
+    print(perc_good)
+    if perc_good >=0.97:
+        wms_bands_request = WmsRequest(data_folder=output_folder,
+                                       layer='BANDS-S2-L2A',
+                                       bbox=bbox_area,
+                                       time=date,
+                                       width=512,
+                                       image_format=MimeType.TIFF_d32f)
+        wms_bands_img = wms_bands_request.get_data(save_data=True)
+        
+wms_scl_request_2017 = WmsRequest(layer='SCL-S2-L2A',
                                bbox=bbox_area,
-                               time='2018-05-06',
-                               width=512,
+                               time=('2017-03-01', '2017-10-31'),
+                               maxcc=0.3,
+                               width = 512,
                                image_format=MimeType.TIFF_d32f)
 
-wms_clouds_img = wms_clouds_request.get_data()
-    
-plot_image(wms_clouds_img[-1])
+wms_scl_img_2017 = wms_scl_request_2017.get_data()
 
-
-
-
-wms_bands_request = WmsRequest(layer='BANDS-S2-L2A',
+for index, date in enumerate(wms_scl_request_2017.get_dates()):
+    print(index)
+    print(date.date())
+    good_pix=np.copy(wms_scl_img_2017[index])
+    good_pix[(good_pix<=3)] = 0
+    good_pix[(good_pix>3) & (good_pix<=6)] = 1
+    good_pix[(good_pix>6)] = 0
+    perc_good = np.sum(good_pix)/(good_pix.shape[0]*good_pix.shape[1])
+    print(perc_good)
+    if perc_good >=0.97:
+        wms_bands_request = WmsRequest(data_folder=output_folder,
+                                       layer='BANDS-S2-L2A',
+                                       bbox=bbox_area,
+                                       time=date,
+                                       width=512,
+                                       image_format=MimeType.TIFF_d32f)
+        wms_bands_img = wms_bands_request.get_data(save_data=True)
+        
+        
+wms_scl_request_2016 = WmsRequest(layer='SCL-S2-L2A',
                                bbox=bbox_area,
-                               time='latest',
-                               width=512,
+                               time=('2016-03-01', '2016-10-31'),
+                               maxcc=0.3,
+                               width = 512,
                                image_format=MimeType.TIFF_d32f)
 
-wms_bands_img = wms_bands_request.get_data()
+wms_scl_img_2016 = wms_scl_request_2016.get_data()
+
+for index, date in enumerate(wms_scl_request_2016.get_dates()):
+    print(index)
+    print(date.date())
+    good_pix=np.copy(wms_scl_img_2016[index])
+    good_pix[(good_pix<=3)] = 0
+    good_pix[(good_pix>3) & (good_pix<=6)] = 1
+    good_pix[(good_pix>6)] = 0
+    perc_good = np.sum(good_pix)/(good_pix.shape[0]*good_pix.shape[1])
+    print(perc_good)
+    if perc_good >=0.97:
+        wms_bands_request = WmsRequest(data_folder=output_folder,
+                                       layer='BANDS-S2-L2A',
+                                       bbox=bbox_area,
+                                       time=date,
+                                       width=512,
+                                       image_format=MimeType.TIFF_d32f)
+        wms_bands_img = wms_bands_request.get_data(save_data=True)
     
-plot_image(wms_bands_img[-1][:, :, 11])
-
-
-
-wms_clouds_request = WmsRequest(layer='SCL-S2-L2A',
-                               bbox=bbox_area,
-                               time='latest',
-                               width=512,
-                               image_format=MimeType.TIFF_d32f)
-
-wms_clouds_img = wms_clouds_request.get_data()
-    
-plot_image(wms_clouds_img[-1])
-
-wms_bands_request = WmsRequest(data_folder='outputs\Sen2_data',
-                               layer='BANDS-S2-L2A',
-                               bbox=bbox_area,
-                               time='2018-05-06',
-                               width=512,
-                               image_format=MimeType.TIFF_d32f)
-wms_bands_img = wms_bands_request.get_data(save_data=True)
-
-
