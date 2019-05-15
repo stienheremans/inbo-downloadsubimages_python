@@ -11,6 +11,7 @@ import shapely
 from shapely.geometry import box, Polygon
 import pandas as pd
 import gdal
+import xlsxwriter
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -40,6 +41,7 @@ for index, row in file.iterrows():
                     }
     # replace coordinates in the empty json file created above by the actual coordinates from the geojson file
     geometry["coordinates"] = features.geometry.coordinates
+    
     # get images that overlap with your study site
     geometry_filter = {
             "type": "GeometryFilter",
@@ -198,8 +200,19 @@ for index, row in file.iterrows():
                 gdal.Warp(output_file, vsicurl_url, dstSRS = 'EPSG:4326', cutlineDSName = "SBZ.json", cropToCutline = True)
             message = 'Image number ' + str(y+1) + ' out of ' + str(len(df_results6)) + ', "' + id_item + '", has been downloaded'
             print(message)
-    message = 'Completing download of SBZ number ' + str(index+1) + ' out of ' + str(len(file)) + ', "' + df_SBZ['NAAM'][0] + '"'
+    message = 'Completed download of SBZ number ' + str(index+1) + ' out of ' + str(len(file)) + ', "' + df_SBZ['NAAM'][0] + '"'
     print(message)
+    # Save images lists to excel for future reference
+    results_path = 'outputs/Planet_data/' + gdf_SBZ["GEBCODE"][0]
+    output_file = results_path + '/image_lists.xlsx' 
+    writer = pd.ExcelWriter(output_file, engine='xlsxwriter')
+    df_results.to_excel(writer,'total_ims_list')
+    df_results6.to_excel(writer,'final_ims_list')
+    writer.save()
+    
+
+    
+    
 
 
 
